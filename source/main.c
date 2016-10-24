@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// XXX TODO: Create directory for output files?
+#include "utility.h"
 
 #define OOTDBG_FILENAME_LIST_OFFSET 0xBE80
 
@@ -16,47 +16,7 @@
 #define FILE_TABLE_ENTRY_LENGTH 0x10
 
 void print_usage(const char *program_name) {
-    fprintf(stderr, "Usage: %s /path/to/ROM\n", program_name);
-}
-
-uint32_t bytes_to_dword(uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4) {
-    return (b1 << 24) | (b2 << 16) | (b3 << 8) | b4;
-}
-
-size_t get_file_size(FILE *file) {
-    fseek(file, 0, SEEK_END);
-    long size = ftell(file);
-    assert(size > 0);
-    rewind(file);
-    return size;
-}
-
-uint8_t *read_file_into_memory(const char *filename) {
-    FILE *file_handle = fopen(filename, "rb");
-    assert(file_handle != NULL);
-    
-    size_t file_size = get_file_size(file_handle);
-    uint8_t *file_buffer = calloc(file_size, sizeof(uint8_t));
-    assert(file_buffer != NULL);
-
-    size_t items_read = fread(file_buffer, sizeof(uint8_t), file_size, file_handle);
-    assert(items_read == file_size*sizeof(uint8_t));
-
-    int close_success = fclose(file_handle);
-    assert(close_success == 0);
-
-    return file_buffer;
-}
-
-void write_file_to_disk(const uint8_t *data, uint32_t length, const char *filename) {
-    FILE *file_handle = fopen(filename, "wb");
-    assert(file_handle != NULL);
-
-    size_t items_written = fwrite(data, sizeof(uint8_t), length, file_handle);
-    assert(items_written == length*sizeof(uint8_t));
-
-    int close_success = fclose(file_handle);
-    assert(close_success == 0);
+    fprintf(stderr, "Usage: %s  <ROM path>  [<output path>]\n", program_name);
 }
 
 const char *get_filename(const uint8_t *filename_list) {
@@ -97,7 +57,7 @@ const uint8_t *find_next_filename(const uint8_t *filename_list) {
     return filename_list;
 }
 
-void extract_files(const uint8_t *rom) {
+void extract_files(const uint8_t *rom, const char *output_dir) {
     const uint8_t *file_table = &rom[OOTDBG_FILE_TABLE_OFFSET];
     const uint8_t *filename_list = &rom[OOTDBG_FILENAME_LIST_OFFSET];
 
@@ -112,21 +72,46 @@ void extract_files(const uint8_t *rom) {
             break;
 
         const char *filename = get_filename(filename_list);
-        write_file_to_disk(&rom[current_file_start],
-                           current_file_end - current_file_start,
-                           filename);
+
+        if (strlen(output_dir) > 0) {
+            char *output_file = malloc(strlen(output_dir) + strlen(filename) + 2);
+
+#ifdef _WIN32
+            sprintf(output_file, "%s\\%s", output_dir, filename);
+#else
+            sprintf(output_file, "%s/%s", output_dir, filename);
+#endif
+
+            write_file_to_disk(&rom[current_file_start],
+                               current_file_end - current_file_start,
+                               output_file);
+
+            free(output_file);
+        } else {
+            write_file_to_disk(&rom[current_file_start],
+                               current_file_end - current_file_start,
+                               filename);
+        }
+        
         filename_list = find_next_filename(filename_list);
     }
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
+    if (argc < 2 || argc > 3) {
         print_usage(argv[0]);
         return EXIT_FAILURE;
     }
 
     uint8_t *rom = read_file_into_memory(argv[1]);
-    extract_files(rom);
+
+    // Use the specified output directory if the user gave one
+    if (argc == 3) {
+        extract_files(rom, argv[2]);
+    } else {
+        extract_files(rom, "");
+    }
+
     free(rom);
 
     return EXIT_SUCCESS;
