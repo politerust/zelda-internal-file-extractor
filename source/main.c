@@ -15,13 +15,15 @@
 #define OOTDBG_FILE_TABLE_LENGTH (OOTDBG_FILE_TABLE_END_OFFSET-OOTDBG_FILE_TABLE_OFFSET)
 #define FILE_TABLE_ENTRY_LENGTH 0x10
 
+#define MAX_FILENAME_LENGTH 64
+
 void print_usage(const char *program_name) {
     fprintf(stderr, "Usage: %s  <ROM path>  [<output path>]\n", program_name);
 }
 
 const char *get_filename(const uint8_t *filename_list) {
     assert(filename_list != NULL);
-    static char filename[1024];
+    static char filename[MAX_FILENAME_LENGTH];
     size_t i = 0;
     
     while (isprint(filename_list[i])) {
@@ -61,6 +63,10 @@ void extract_files(const uint8_t *rom, const char *output_dir) {
     const uint8_t *file_table = &rom[OOTDBG_FILE_TABLE_OFFSET];
     const uint8_t *filename_list = &rom[OOTDBG_FILENAME_LIST_OFFSET];
 
+    char *output_file = NULL;
+    if (strlen(output_dir) > 0) {
+        output_file = malloc(strlen(output_dir) + MAX_FILENAME_LENGTH + 1);
+    }
     for (size_t i = 0; i < OOTDBG_FILE_TABLE_LENGTH; i += FILE_TABLE_ENTRY_LENGTH) {
         uint32_t current_file_start = bytes_to_dword(file_table[i], file_table[i + 1],
                                                      file_table[i + 2], file_table[i + 3]);
@@ -73,9 +79,7 @@ void extract_files(const uint8_t *rom, const char *output_dir) {
 
         const char *filename = get_filename(filename_list);
 
-        if (strlen(output_dir) > 0) {
-            char *output_file = malloc(strlen(output_dir) + strlen(filename) + 2);
-
+        if (output_file) {
 #ifdef _WIN32
             sprintf(output_file, "%s\\%s", output_dir, filename);
 #else
@@ -85,8 +89,6 @@ void extract_files(const uint8_t *rom, const char *output_dir) {
             write_file_to_disk(&rom[current_file_start],
                                current_file_end - current_file_start,
                                output_file);
-
-            free(output_file);
         } else {
             write_file_to_disk(&rom[current_file_start],
                                current_file_end - current_file_start,
@@ -94,6 +96,10 @@ void extract_files(const uint8_t *rom, const char *output_dir) {
         }
         
         filename_list = find_next_filename(filename_list);
+    }
+
+    if (output_file) {
+        free(output_file);
     }
 }
 
